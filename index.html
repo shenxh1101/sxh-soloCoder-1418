@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公式编辑器与函数绘图工具</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="top-bar">
+            <div class="logo">
+                <span class="logo-icon">ƒ</span>
+                <h1 class="logo-text">公式编辑器 & 函数绘图</h1>
+            </div>
+            <div class="top-actions">
+                <button class="btn btn-secondary" id="btnSave">
+                    <span class="btn-icon">💾</span>保存
+                </button>
+                <button class="btn btn-secondary" id="btnLoad">
+                    <span class="btn-icon">📂</span>加载
+                </button>
+                <button class="btn btn-primary" id="btnExport">
+                    <span class="btn-icon">📥</span>导出
+                </button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <aside class="left-panel">
+                <div class="panel-section">
+                    <h2 class="section-title">公式编辑器</h2>
+                    
+                    <div class="formula-display">
+                        <div id="formulaPreview" class="formula-preview"></div>
+                        <div id="formulaCursor" class="formula-cursor">|</div>
+                    </div>
+
+                    <div class="formula-input-row">
+                        <input type="text" id="formulaInput" class="formula-input" placeholder="x^2 + sin(x)" readonly>
+                        <button class="btn btn-small btn-danger" id="btnClear">清空</button>
+                        <button class="btn btn-small btn-secondary" id="btnBackspace">⌫</button>
+                    </div>
+
+                    <div class="variable-setting">
+                        <label>自变量：</label>
+                        <select id="variableSelect" class="select-input">
+                            <option value="x">x</option>
+                            <option value="t">t</option>
+                            <option value="n">n</option>
+                        </select>
+                        <label>范围：</label>
+                        <input type="number" id="rangeMin" class="num-input small" value="-10">
+                        <span>~</span>
+                        <input type="number" id="rangeMax" class="num-input small" value="10">
+                        <label>步长：</label>
+                        <input type="number" id="rangeStep" class="num-input small" value="0.1" step="0.01">
+                    </div>
+
+                    <button class="btn btn-primary btn-full" id="btnAddCurve">
+                        <span class="btn-icon">📈</span>添加到绘图
+                    </button>
+                </div>
+
+                <div class="panel-section">
+                    <h3 class="subsection-title">基础运算</h3>
+                    <div class="operator-grid">
+                        <button class="op-btn" data-op="number" data-value="1">1</button>
+                        <button class="op-btn" data-op="number" data-value="2">2</button>
+                        <button class="op-btn" data-op="number" data-value="3">3</button>
+                        <button class="op-btn" data-op="operator" data-value="+">+</button>
+                        <button class="op-btn" data-op="number" data-value="4">4</button>
+                        <button class="op-btn" data-op="number" data-value="5">5</button>
+                        <button class="op-btn" data-op="number" data-value="6">6</button>
+                        <button class="op-btn" data-op="operator" data-value="-">−</button>
+                        <button class="op-btn" data-op="number" data-value="7">7</button>
+                        <button class="op-btn" data-op="number" data-value="8">8</button>
+                        <button class="op-btn" data-op="number" data-value="9">9</button>
+                        <button class="op-btn" data-op="operator" data-value="*">×</button>
+                        <button class="op-btn" data-op="number" data-value="0">0</button>
+                        <button class="op-btn" data-op="number" data-value=".">.</button>
+                        <button class="op-btn" data-op="paren" data-value="(">(</button>
+                        <button class="op-btn" data-op="paren" data-value=")">)</button>
+                        <button class="op-btn" data-op="operator" data-value="/">÷</button>
+                        <button class="op-btn" data-op="variable" data-value="x">x</button>
+                        <button class="op-btn" data-op="variable" data-value="t">t</button>
+                        <button class="op-btn" data-op="constant" data-value="pi">π</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3 class="subsection-title">高级运算</h3>
+                    <div class="operator-grid">
+                        <button class="op-btn" data-op="power" data-value="^">xⁿ</button>
+                        <button class="op-btn" data-op="sqrt" data-value="sqrt">√</button>
+                        <button class="op-btn" data-op="fraction" data-value="frac">a/b</button>
+                        <button class="op-btn" data-op="abs" data-value="abs">|x|</button>
+                        <button class="op-btn" data-op="function" data-value="sin">sin</button>
+                        <button class="op-btn" data-op="function" data-value="cos">cos</button>
+                        <button class="op-btn" data-op="function" data-value="tan">tan</button>
+                        <button class="op-btn" data-op="function" data-value="log">log</button>
+                        <button class="op-btn" data-op="function" data-value="ln">ln</button>
+                        <button class="op-btn" data-op="function" data-value="exp">eˣ</button>
+                        <button class="op-btn" data-op="sum" data-value="sum">∑</button>
+                        <button class="op-btn" data-op="integral" data-value="int">∫</button>
+                        <button class="op-btn" data-op="constant" data-value="e">e</button>
+                        <button class="op-btn" data-op="function" data-value="asin">asin</button>
+                        <button class="op-btn" data-op="function" data-value="acos">acos</button>
+                        <button class="op-btn" data-op="function" data-value="atan">atan</button>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="center-panel">
+                <div class="canvas-container">
+                    <canvas id="graphCanvas"></canvas>
+                    <div class="canvas-tooltip" id="canvasTooltip" style="display:none;"></div>
+                    <div class="canvas-legend" id="canvasLegend"></div>
+                    <div class="canvas-controls">
+                        <button class="canvas-control-btn" id="btnZoomIn" title="放大">+</button>
+                        <button class="canvas-control-btn" id="btnZoomOut" title="缩小">−</button>
+                        <button class="canvas-control-btn" id="btnResetView" title="重置视图">⟲</button>
+                    </div>
+                </div>
+            </main>
+
+            <aside class="right-panel">
+                <div class="panel-section">
+                    <h2 class="section-title">曲线管理</h2>
+                    <div id="curveList" class="curve-list"></div>
+                    <div class="curve-limit-hint">最多支持 3 条曲线</div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">坐标系</h2>
+                    <div class="coord-system-tabs">
+                        <button class="coord-tab active" data-coord="cartesian">直角坐标</button>
+                        <button class="coord-tab" data-coord="polar">极坐标</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">显示选项</h2>
+                    <div class="option-list">
+                        <label class="option-item">
+                            <input type="checkbox" id="showGrid" checked>
+                            <span>显示网格</span>
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="showAxes" checked>
+                            <span>显示坐标轴</span>
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="showLabels" checked>
+                            <span>显示刻度标签</span>
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="showKeyPoints">
+                            <span>关键点标注</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">视图范围</h2>
+                    <div class="range-inputs">
+                        <div class="range-row">
+                            <span class="range-label">X 轴</span>
+                            <input type="number" id="viewXMin" class="num-input" value="-10">
+                            <span>~</span>
+                            <input type="number" id="viewXMax" class="num-input" value="10">
+                        </div>
+                        <div class="range-row">
+                            <span class="range-label">Y 轴</span>
+                            <input type="number" id="viewYMin" class="num-input" value="-10">
+                            <span>~</span>
+                            <input type="number" id="viewYMax" class="num-input" value="10">
+                        </div>
+                        <button class="btn btn-secondary btn-small btn-full" id="btnApplyView">应用视图</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">数据拟合</h2>
+                    <div class="data-fit-section">
+                        <label class="file-upload-btn">
+                            <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+                            <span class="btn-icon">📄</span>导入 CSV
+                        </label>
+                        <div id="csvInfo" class="csv-info">未选择文件</div>
+                        
+                        <div class="poly-degree-selector">
+                            <label>多项式次数：</label>
+                            <div class="degree-buttons">
+                                <button class="degree-btn" data-degree="1">1次</button>
+                                <button class="degree-btn active" data-degree="2">2次</button>
+                                <button class="degree-btn" data-degree="3">3次</button>
+                                <button class="degree-btn" data-degree="4">4次</button>
+                                <button class="degree-btn" data-degree="5">5次</button>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary btn-small btn-full" id="btnFitCurve" disabled>
+                            <span class="btn-icon">📊</span>拟合曲线
+                        </button>
+
+                        <div id="fitResult" class="fit-result" style="display:none;">
+                            <div class="result-row">
+                                <span class="result-label">拟合公式：</span>
+                                <span id="fitFormula" class="result-value"></span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">R² 值：</span>
+                                <span id="fitRSquared" class="result-value"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <footer class="bottom-bar">
+            <div class="status-item">
+                <span class="status-label">公式：</span>
+                <span id="statusFormula" class="status-value">无</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">曲线数：</span>
+                <span id="statusCurveCount" class="status-value">0 / 3</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">坐标：</span>
+                <span id="statusCoord" class="status-value">—</span>
+            </div>
+        </footer>
+    </div>
+
+    <div class="modal-overlay" id="saveModal" style="display:none;">
+        <div class="modal">
+            <h3 class="modal-title">保存配置</h3>
+            <input type="text" id="saveNameInput" class="modal-input" placeholder="配置名称">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="btnCancelSave">取消</button>
+                <button class="btn btn-primary" id="btnConfirmSave">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="loadModal" style="display:none;">
+        <div class="modal">
+            <h3 class="modal-title">加载配置</h3>
+            <div id="savedConfigList" class="saved-config-list"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="btnCancelLoad">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="exportModal" style="display:none;">
+        <div class="modal">
+            <h3 class="modal-title">导出</h3>
+            <div class="export-options">
+                <button class="export-option-btn" data-format="png">
+                    <span class="export-icon">🖼️</span>
+                    <span>PNG 图片</span>
+                </button>
+                <button class="export-option-btn" data-format="svg">
+                    <span class="export-icon">📐</span>
+                    <span>SVG 矢量图</span>
+                </button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="btnCancelExport">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
