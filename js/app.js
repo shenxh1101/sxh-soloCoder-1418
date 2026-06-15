@@ -219,7 +219,10 @@ class App {
             variable: variable,
             formula: formulaStr,
             latex: latex,
-            jsExpression: jsExpression
+            jsExpression: jsExpression,
+            xMin: null,
+            xMax: null,
+            step: null
         };
         
         if (this.graphEngine.addCurve(curve)) {
@@ -263,6 +266,18 @@ class App {
                         ${styleButtons}
                     </div>
                 </div>
+                <div class="curve-range-row">
+                    <div class="curve-range-group">
+                        <label>范围</label>
+                        <input type="number" class="num-input small curve-range-input" data-field="xMin" data-id="${curve.id}" value="${curve.xMin !== null && curve.xMin !== undefined ? curve.xMin : ''}" placeholder="最小">
+                        <span>~</span>
+                        <input type="number" class="num-input small curve-range-input" data-field="xMax" data-id="${curve.id}" value="${curve.xMax !== null && curve.xMax !== undefined ? curve.xMax : ''}" placeholder="最大">
+                    </div>
+                    <div class="curve-range-group">
+                        <label>步长</label>
+                        <input type="number" class="num-input small curve-step-input" data-field="step" data-id="${curve.id}" value="${curve.step !== null && curve.step !== undefined ? curve.step : ''}" placeholder="自动" step="any">
+                    </div>
+                </div>
             `;
             
             curveList.appendChild(item);
@@ -297,6 +312,40 @@ class App {
                 this.setCurveLineStyle(id, style);
             });
         });
+        
+        curveList.querySelectorAll('.curve-range-input, .curve-step-input').forEach(input => {
+            input.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const id = input.dataset.id;
+                const field = input.dataset.field;
+                let value = input.value.trim();
+                
+                if (value === '') {
+                    value = null;
+                } else {
+                    value = parseFloat(value);
+                    if (isNaN(value)) {
+                        value = null;
+                        input.value = '';
+                    }
+                }
+                
+                this.setCurveRange(id, field, value);
+            });
+            
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    input.blur();
+                }
+            });
+        });
+    }
+    
+    setCurveRange(id, field, value) {
+        const curve = this.graphEngine.curves.find(c => c.id === id);
+        if (curve) {
+            this.graphEngine.updateCurve(id, { [field]: value });
+        }
     }
     
     setCurveLineStyle(id, style) {
@@ -498,8 +547,13 @@ class App {
         });
         
         document.getElementById('btnLoad').addEventListener('click', () => {
+            document.getElementById('configSearchInput').value = '';
             this.refreshSavedConfigList();
             document.getElementById('loadModal').style.display = 'flex';
+        });
+        
+        document.getElementById('configSearchInput').addEventListener('input', (e) => {
+            this.refreshSavedConfigList(e.target.value);
         });
         
         document.getElementById('btnCancelLoad').addEventListener('click', () => {
@@ -522,11 +576,31 @@ class App {
     }
 
     saveConfig(name) {
+        if (!name || !name.trim()) {
+            alert('请输入配置名称');
+            return;
+        }
+        
+        name = name.trim();
+        
         const data = {
             formula: this.formulaEditor.serialize(),
             graph: this.graphEngine.serialize(),
             dataFitter: this.dataFitter.serialize()
         };
+        
+        const existingConfigs = this.storageManager.list();
+        const existing = existingConfigs.find(c => c.name === name);
+        
+        if (existing) {
+            if (confirm(`已存在名为"${name}"的配置，是否覆盖？`)) {
+                const updated = this.storageManager.update(existing.id, data);
+                if (updated) {
+                    alert('保存成功！');
+                }
+            }
+            return;
+        }
         
         const config = this.storageManager.save(name, data);
         if (config) {
@@ -534,9 +608,14 @@ class App {
         }
     }
 
-    refreshSavedConfigList() {
+    refreshSavedConfigList(filter = '') {
         const list = document.getElementById('savedConfigList');
-        const configs = this.storageManager.list();
+        let configs = this.storageManager.list();
+        
+        if (filter && filter.trim()) {
+            const keyword = filter.trim().toLowerCase();
+            configs = configs.filter(c => c.name.toLowerCase().includes(keyword));
+        }
         
         list.innerHTML = '';
         
@@ -555,12 +634,14 @@ class App {
                     <div class="saved-config-date">${this.storageManager.formatDate(config.updatedAt)}</div>
                 </div>
                 <div class="saved-config-actions">
+                    <button class="saved-config-rename" data-id="${config.id}" title="重命名">重命名</button>
                     <button class="saved-config-delete" data-id="${config.id}" title="删除">删除</button>
                 </div>
             `;
             
             item.addEventListener('click', (e) => {
-                if (!e.target.classList.contains('saved-config-delete')) {
+                if (!e.target.classList.contains('saved-config-delete') && 
+                    !e.target.classList.contains('saved-config-rename')) {
                     this.loadConfig(config.id);
                     document.getElementById('loadModal').style.display = 'none';
                 }
@@ -570,7 +651,23 @@ class App {
                 e.stopPropagation();
                 if (confirm('确定要删除这个配置吗？')) {
                     this.storageManager.delete(config.id);
-                    this.refreshSavedConfigList();
+                    this.refreshSavedConfigList(document.getElementById('configSearchInput').value);
+                }
+            });
+            
+            item.querySelector('.saved-config-rename').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const newName = prompt('请输入新的配置名称：', config.name);
+                if (newName && newName.trim()) {
+                    const trimmedName = newName.trim();
+                    const allConfigs = this.storageManager.list();
+                    const conflict = allConfigs.find(c => c.id !== config.id && c.name === trimmedName);
+                    if (conflict) {
+                        alert('已存在同名配置，请使用其他名称');
+                        return;
+                    }
+                    this.storageManager.rename(config.id, trimmedName);
+                    this.refreshSavedConfigList(document.getElementById('configSearchInput').value);
                 }
             });
             
@@ -578,7 +675,50 @@ class App {
         });
     }
 
+    resetAllState() {
+        this.graphEngine.curves = [];
+        this.graphEngine.scatterData = null;
+        this.graphEngine.fitCurve = null;
+        
+        this.dataFitter.clearData();
+        
+        this.formulaEditor.clear();
+        
+        this.graphEngine.setCoordinateSystem('cartesian');
+        this.graphEngine.setView(-10, 10, -10, 10);
+        this.graphEngine.showGrid = true;
+        this.graphEngine.showAxes = true;
+        this.graphEngine.showLabels = true;
+        this.graphEngine.showKeyPoints = false;
+        
+        document.querySelectorAll('.coord-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.coord === 'cartesian');
+        });
+        
+        document.getElementById('showGrid').checked = true;
+        document.getElementById('showAxes').checked = true;
+        document.getElementById('showLabels').checked = true;
+        document.getElementById('showKeyPoints').checked = false;
+        
+        document.getElementById('csvInfo').textContent = '未选择';
+        document.getElementById('btnFitCurve').disabled = true;
+        document.getElementById('fitResult').style.display = 'none';
+        
+        document.querySelectorAll('.degree-btn').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.degree) === 2);
+        });
+        
+        this.updateViewInputs();
+        this.updateCurveList();
+        this.updateLegend();
+        this.updateStatus();
+        
+        this.graphEngine.render();
+    }
+
     loadConfig(id) {
+        this.resetAllState();
+        
         const config = this.storageManager.get(id);
         if (!config || !config.data) return;
         
@@ -652,7 +792,10 @@ class App {
                                 variable: variable,
                                 formula: curveData.formula,
                                 latex: curveData.latex || curveData.formula,
-                                jsExpression: curveData.jsExpression
+                                jsExpression: curveData.jsExpression,
+                                xMin: curveData.xMin !== undefined ? curveData.xMin : null,
+                                xMax: curveData.xMax !== undefined ? curveData.xMax : null,
+                                step: curveData.step !== undefined ? curveData.step : null
                             };
                             
                             this.graphEngine.curves.push(curve);
@@ -723,7 +866,22 @@ class App {
         
         const curvesInfo = this.graphEngine.curves
             .filter(c => c.visible !== false)
-            .map(c => ({ formula: c.formula || c.latex || 'f(x)', color: c.color }));
+            .map(c => ({
+                formula: c.formula || c.latex || 'f(x)',
+                color: c.color,
+                lineStyle: c.lineStyle || 'solid',
+                variable: c.variable,
+                xMin: c.xMin,
+                xMax: c.xMax,
+                step: c.step
+            }));
+        
+        const viewInfo = {
+            xMin: this.graphEngine.xMin,
+            xMax: this.graphEngine.xMax,
+            yMin: this.graphEngine.yMin,
+            yMax: this.graphEngine.yMax
+        };
         
         const fitInfo = this.dataFitter.hasFit() ? {
             formula: this.dataFitter.getFormulaString(),
@@ -733,84 +891,143 @@ class App {
         const coordSystem = this.graphEngine.coordinateSystem === 'polar' ? '极坐标系' : '直角坐标系';
         
         if (format === 'png') {
-            this.exportPNGWithInfo(curvesInfo, fitInfo, coordSystem, timestamp);
+            this.exportPNGWithInfo(curvesInfo, viewInfo, fitInfo, coordSystem, timestamp);
         } else if (format === 'svg') {
-            const svgContent = this.graphEngine.exportSVG(curvesInfo, fitInfo, coordSystem);
+            const svgContent = this.graphEngine.exportSVG(curvesInfo, viewInfo, fitInfo, coordSystem);
             downloadFile(`graph-${timestamp}.svg`, svgContent, 'image/svg+xml');
         }
     }
     
-    exportPNGWithInfo(curvesInfo, fitInfo, coordSystem, timestamp) {
+    exportPNGWithInfo(curvesInfo, viewInfo, fitInfo, coordSystem, timestamp) {
         const originalCanvas = this.graphEngine.canvas;
-        const dpr = window.devicePixelRatio || 1;
-        const headerHeight = 60 + curvesInfo.length * 22 + (fitInfo ? 44 : 0);
+        const exportDpr = 2;
+        const cssWidth = originalCanvas.width / (window.devicePixelRatio || 1);
+        const cssHeight = originalCanvas.height / (window.devicePixelRatio || 1);
+        
+        const headerHeight = 100 + curvesInfo.length * 28 + (fitInfo ? 56 : 0);
+        
+        const totalCssWidth = cssWidth;
+        const totalCssHeight = headerHeight + cssHeight;
         
         const newCanvas = document.createElement('canvas');
-        newCanvas.width = originalCanvas.width;
-        newCanvas.height = originalCanvas.height + headerHeight * dpr;
+        newCanvas.width = Math.round(totalCssWidth * exportDpr);
+        newCanvas.height = Math.round(totalCssHeight * exportDpr);
         
         const ctx = newCanvas.getContext('2d');
-        ctx.scale(dpr, dpr);
+        ctx.scale(exportDpr, exportDpr);
         
-        const cssWidth = originalCanvas.width / dpr;
-        const cssHeight = originalCanvas.height / dpr;
-        
-        const bgGradient = ctx.createLinearGradient(0, 0, 0, headerHeight + cssHeight);
+        const bgGradient = ctx.createLinearGradient(0, 0, 0, totalCssHeight);
         bgGradient.addColorStop(0, '#0a1628');
         bgGradient.addColorStop(1, '#0d1b2e');
         ctx.fillStyle = bgGradient;
-        ctx.fillRect(0, 0, cssWidth, headerHeight + cssHeight);
+        ctx.fillRect(0, 0, totalCssWidth, totalCssHeight);
         
         let y = 20;
         
         ctx.fillStyle = '#e8f0ff';
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 16px sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.fillText(`公式编辑器 & 函数绘图  |  ${coordSystem}`, 20, y);
-        y += 20;
+        ctx.fillText('公式编辑器 & 函数绘图', 24, y);
+        
+        ctx.fillStyle = '#6b82a5';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(new Date().toLocaleString('zh-CN'), totalCssWidth - 24, y + 3);
+        
+        y += 28;
         
         ctx.strokeStyle = '#2a4168';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(20, y - 4);
-        ctx.lineTo(cssWidth - 20, y - 4);
+        ctx.moveTo(24, y);
+        ctx.lineTo(totalCssWidth - 24, y);
         ctx.stroke();
-        y += 6;
+        y += 12;
+        
+        ctx.fillStyle = '#9fb3d1';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
+        
+        const viewText = coordSystem + '    ' + 
+            `视图范围: x [${formatNumber(viewInfo.xMin, 2)}, ${formatNumber(viewInfo.xMax, 2)}], y [${formatNumber(viewInfo.yMin, 2)}, ${formatNumber(viewInfo.yMax, 2)}]`;
+        ctx.fillText(viewText, 24, y);
+        y += 24;
         
         if (curvesInfo.length > 0) {
             ctx.fillStyle = '#9fb3d1';
-            ctx.font = '12px sans-serif';
-            ctx.fillText('曲线公式：', 20, y);
-            y += 18;
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('曲线列表：', 24, y);
+            y += 20;
             
-            curvesInfo.forEach(info => {
+            curvesInfo.forEach((info, idx) => {
                 ctx.fillStyle = info.color;
-                ctx.fillRect(28, y + 3, 16, 3);
+                ctx.fillRect(32, y + 6, 20, 4);
+                
+                let styleText = '';
+                if (info.lineStyle === 'dashed') {
+                    styleText = ' [虚线]';
+                } else if (info.lineStyle === 'dotted') {
+                    styleText = ' [点线]';
+                }
+                
+                let rangeText = '';
+                if (info.xMin !== null && info.xMin !== undefined && info.xMax !== null && info.xMax !== undefined) {
+                    rangeText = `    范围: [${formatNumber(info.xMin, 2)}, ${formatNumber(info.xMax, 2)}]`;
+                }
+                if (info.step !== null && info.step !== undefined) {
+                    rangeText += `    步长: ${formatNumber(info.step, 4)}`;
+                }
                 
                 ctx.fillStyle = '#e8f0ff';
                 ctx.font = '12px monospace';
-                ctx.fillText(info.formula, 52, y);
-                y += 22;
+                ctx.fillText(`${idx + 1}. ${info.variable ? `r(${info.variable})` : 'f(x)'} = ${info.formula}${styleText}${rangeText}`, 64, y);
+                y += 28;
             });
         }
         
         if (fitInfo) {
             ctx.fillStyle = '#9fb3d1';
-            ctx.font = '12px sans-serif';
-            ctx.fillText('拟合结果：', 20, y);
-            y += 18;
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('拟合结果：', 24, y);
+            y += 20;
             
             ctx.fillStyle = '#34d399';
-            ctx.fillRect(28, y + 3, 16, 3);
+            ctx.fillRect(32, y + 6, 20, 4);
             
             ctx.fillStyle = '#e8f0ff';
             ctx.font = '12px monospace';
-            ctx.fillText(`y = ${fitInfo.formula}    R² = ${fitInfo.rSquared.toFixed(6)}`, 52, y);
-            y += 22;
+            ctx.fillText(`y = ${fitInfo.formula}    R² = ${fitInfo.rSquared.toFixed(6)}`, 64, y);
+            y += 28;
         }
         
-        ctx.drawImage(originalCanvas, 0, headerHeight * dpr, originalCanvas.width, originalCanvas.height);
+        y += 4;
+        ctx.strokeStyle = '#2a4168';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(24, y);
+        ctx.lineTo(totalCssWidth - 24, y);
+        ctx.stroke();
+        y += 8;
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = originalCanvas.width;
+        tempCanvas.height = originalCanvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        const scaleX = (cssWidth * exportDpr) / originalCanvas.width;
+        const scaleY = (cssHeight * exportDpr) / originalCanvas.height;
+        const scale = Math.min(scaleX, scaleY);
+        
+        const drawWidth = originalCanvas.width * scale;
+        const drawHeight = originalCanvas.height * scale;
+        const offsetX = (totalCssWidth * exportDpr - drawWidth) / 2;
+        
+        ctx.drawImage(
+            originalCanvas,
+            0, 0, originalCanvas.width, originalCanvas.height,
+            offsetX / exportDpr, y, drawWidth / exportDpr, drawHeight / exportDpr
+        );
         
         const url = newCanvas.toDataURL('image/png');
         const a = document.createElement('a');

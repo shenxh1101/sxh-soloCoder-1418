@@ -525,6 +525,41 @@ body {
     border-top: 1px solid var(--border-color);
 }
 
+.curve-range-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 6px;
+    margin-top: 2px;
+    border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.curve-range-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 120px;
+}
+
+.curve-range-group label {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.curve-range-group span {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.curve-range-input,
+.curve-step-input {
+    flex: 1;
+    min-width: 0;
+}
+
 .curve-style-label {
     font-size: 11px;
     color: var(--text-muted);
@@ -914,6 +949,25 @@ body {
 .saved-config-delete:hover {
     color: var(--accent-danger);
     background: rgba(248, 113, 113, 0.1);
+}
+
+.saved-config-rename {
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    border-radius: 4px;
+}
+
+.saved-config-rename:hover {
+    color: var(--accent-primary);
+    background: rgba(0, 212, 255, 0.1);
+}
+
+#configSearchInput {
+    margin-bottom: 12px;
 }
 
 .export-options {

@@ -547,11 +547,19 @@ export class GraphEngine {
         
         this.ctx.beginPath();
         
-        const step = (this.xMax - this.xMin) / this.width * 2;
+        const xMin = (curve.xMin !== null && curve.xMin !== undefined) ? curve.xMin : this.xMin;
+        const xMax = (curve.xMax !== null && curve.xMax !== undefined) ? curve.xMax : this.xMax;
+        let step = (curve.step !== null && curve.step !== undefined) ? curve.step : ((xMax - xMin) / this.width * 2);
+        
+        if (step <= 0 || !isFinite(step)) {
+            step = (xMax - xMin) / this.width * 2;
+        }
+        
         let isFirstPoint = true;
         let lastY = null;
+        let lastScreenPos = null;
         
-        for (let x = this.xMin; x <= this.xMax; x += step) {
+        for (let x = xMin; x <= xMax + step / 2; x += step) {
             let y;
             try {
                 y = evaluator(x);
@@ -566,20 +574,32 @@ export class GraphEngine {
                 
                 const screenPos = this.worldToScreen(x, y);
                 
-                if (isFirstPoint) {
+                let shouldBreak = isFirstPoint;
+                if (!shouldBreak && lastScreenPos && lastY !== null) {
+                    const dx = screenPos.x - lastScreenPos.x;
+                    const dy = screenPos.y - lastScreenPos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > Math.max(this.width, this.height) * 0.3) {
+                        shouldBreak = true;
+                    }
+                    if (Math.abs(y - lastY) >= (this.yMax - this.yMin) * 10) {
+                        shouldBreak = true;
+                    }
+                }
+                
+                if (shouldBreak) {
                     this.ctx.moveTo(screenPos.x, screenPos.y);
                     isFirstPoint = false;
                 } else {
-                    if (Math.abs(y - lastY) < (this.yMax - this.yMin) * 10) {
-                        this.ctx.lineTo(screenPos.x, screenPos.y);
-                    } else {
-                        this.ctx.moveTo(screenPos.x, screenPos.y);
-                    }
+                    this.ctx.lineTo(screenPos.x, screenPos.y);
                 }
+                
                 lastY = y;
+                lastScreenPos = screenPos;
             } else {
                 isFirstPoint = true;
                 lastY = null;
+                lastScreenPos = null;
             }
         }
         
@@ -721,10 +741,13 @@ export class GraphEngine {
         return this.canvas.toDataURL('image/png');
     }
 
-    exportSVG(curvesInfo = null, fitInfo = null, coordSystem = '直角坐标系') {
-        const graphW = this.width;
-        const headerHeight = 60 + (curvesInfo ? curvesInfo.length * 22 : 0) + (fitInfo ? 44 : 0);
-        const totalH = this.height + headerHeight;
+    exportSVG(curvesInfo = null, viewInfo = null, fitInfo = null, coordSystem = '直角坐标系') {
+        const cssDpr = window.devicePixelRatio || 1;
+        const graphW = this.width / cssDpr;
+        const graphH = this.height / cssDpr;
+        
+        const headerHeight = 100 + (curvesInfo ? curvesInfo.length * 28 : 0) + (fitInfo ? 56 : 0);
+        const totalH = graphH + headerHeight;
         
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${graphW}" height="${totalH}" viewBox="0 0 ${graphW} ${totalH}">`;
         
@@ -738,35 +761,71 @@ export class GraphEngine {
         svg += `<rect width="${graphW}" height="${totalH}" fill="url(#bgGradient)"/>`;
         
         let y = 20;
+        const now = new Date();
+        const dateStr = now.toLocaleString('zh-CN');
         
-        svg += `<text x="20" y="${y}" font-family="sans-serif" font-size="14" font-weight="bold" fill="#e8f0ff">公式编辑器 &amp; 函数绘图  |  ${coordSystem}</text>`;
-        y += 20;
+        svg += `<text x="24" y="${y}" font-family="sans-serif" font-size="16" font-weight="bold" fill="#e8f0ff">公式编辑器 &amp; 函数绘图</text>`;
+        svg += `<text x="${graphW - 24}" y="${y + 3}" font-family="sans-serif" font-size="12" fill="#6b82a5" text-anchor="end">${this.escapeXml(dateStr)}</text>`;
+        y += 28;
         
-        svg += `<line x1="20" y1="${y - 4}" x2="${graphW - 20}" y2="${y - 4}" stroke="#2a4168" stroke-width="1"/>`;
-        y += 6;
+        svg += `<line x1="24" y1="${y}" x2="${graphW - 24}" y2="${y}" stroke="#2a4168" stroke-width="1"/>`;
+        y += 12;
+        
+        if (viewInfo) {
+            const viewText = coordSystem + '    ' + 
+                `视图范围: x [${formatNumber(viewInfo.xMin, 2)}, ${formatNumber(viewInfo.xMax, 2)}], y [${formatNumber(viewInfo.yMin, 2)}, ${formatNumber(viewInfo.yMax, 2)}]`;
+            svg += `<text x="24" y="${y + 12}" font-family="sans-serif" font-size="12" fill="#9fb3d1">${this.escapeXml(viewText)}</text>`;
+            y += 24;
+        }
         
         if (curvesInfo && curvesInfo.length > 0) {
-            svg += `<text x="20" y="${y + 12}" font-family="sans-serif" font-size="12" fill="#9fb3d1">曲线公式：</text>`;
-            y += 18;
+            svg += `<text x="24" y="${y + 12}" font-family="sans-serif" font-size="12" font-weight="bold" fill="#9fb3d1">曲线列表：</text>`;
+            y += 20;
             
-            curvesInfo.forEach(info => {
-                svg += `<rect x="28" y="${y + 3}" width="16" height="3" fill="${info.color}"/>`;
-                svg += `<text x="52" y="${y + 12}" font-family="monospace" font-size="12" fill="#e8f0ff">${this.escapeXml(info.formula)}</text>`;
-                y += 22;
+            curvesInfo.forEach((info, idx) => {
+                svg += `<rect x="32" y="${y + 6}" width="20" height="4" fill="${info.color}"/>`;
+                
+                let styleText = '';
+                if (info.lineStyle === 'dashed') {
+                    styleText = ' [虚线]';
+                } else if (info.lineStyle === 'dotted') {
+                    styleText = ' [点线]';
+                }
+                
+                let rangeText = '';
+                if (info.xMin !== null && info.xMin !== undefined && info.xMax !== null && info.xMax !== undefined) {
+                    rangeText = `    范围: [${formatNumber(info.xMin, 2)}, ${formatNumber(info.xMax, 2)}]`;
+                }
+                if (info.step !== null && info.step !== undefined) {
+                    rangeText += `    步长: ${formatNumber(info.step, 4)}`;
+                }
+                
+                const funcName = info.variable ? `r(${info.variable})` : 'f(x)';
+                const formulaText = `${idx + 1}. ${funcName} = ${info.formula}${styleText}${rangeText}`;
+                svg += `<text x="64" y="${y + 12}" font-family="monospace" font-size="12" fill="#e8f0ff">${this.escapeXml(formulaText)}</text>`;
+                y += 28;
             });
         }
         
         if (fitInfo) {
-            svg += `<text x="20" y="${y + 12}" font-family="sans-serif" font-size="12" fill="#9fb3d1">拟合结果：</text>`;
-            y += 18;
-            svg += `<rect x="28" y="${y + 3}" width="16" height="3" fill="#34d399"/>`;
-            svg += `<text x="52" y="${y + 12}" font-family="monospace" font-size="12" fill="#e8f0ff">y = ${this.escapeXml(fitInfo.formula)}    R² = ${fitInfo.rSquared.toFixed(6)}</text>`;
-            y += 22;
+            svg += `<text x="24" y="${y + 12}" font-family="sans-serif" font-size="12" font-weight="bold" fill="#9fb3d1">拟合结果：</text>`;
+            y += 20;
+            svg += `<rect x="32" y="${y + 6}" width="20" height="4" fill="#34d399"/>`;
+            svg += `<text x="64" y="${y + 12}" font-family="monospace" font-size="12" fill="#e8f0ff">y = ${this.escapeXml(fitInfo.formula)}    R² = ${fitInfo.rSquared.toFixed(6)}</text>`;
+            y += 28;
         }
         
-        const transformY = headerHeight;
+        y += 4;
+        svg += `<line x1="24" y1="${y}" x2="${graphW - 24}" y2="${y}" stroke="#2a4168" stroke-width="1"/>`;
+        y += 8;
         
-        svg += `<g transform="translate(0, ${transformY})">`;
+        const transformY = y;
+        const scaleX = graphW / this.width;
+        const scaleY = graphH / this.height;
+        const scale = Math.min(scaleX, scaleY);
+        const offsetX = (graphW - this.width * scale) / 2;
+        
+        svg += `<g transform="translate(${offsetX}, ${transformY}) scale(${scale})">`;
         
         if (this.showGrid) {
             if (this.coordinateSystem === 'polar') {
@@ -869,13 +928,19 @@ export class GraphEngine {
         if (!curve.evaluator) return '';
         
         const evaluator = curve.evaluator;
-        const thetaStep = 0.01;
-        const thetaEnd = Math.PI * 2;
+        const thetaStart = (curve.xMin !== null && curve.xMin !== undefined) ? curve.xMin : 0;
+        const thetaEnd = (curve.xMax !== null && curve.xMax !== undefined) ? curve.xMax : Math.PI * 2;
+        let thetaStep = (curve.step !== null && curve.step !== undefined) ? curve.step : 0.01;
+        
+        if (thetaStep <= 0 || !isFinite(thetaStep)) {
+            thetaStep = 0.01;
+        }
+        
         let pathData = '';
         let isFirstPoint = true;
         let lastScreenPos = null;
         
-        for (let theta = 0; theta <= thetaEnd + thetaStep / 2; theta += thetaStep) {
+        for (let theta = thetaStart; theta <= thetaEnd + thetaStep / 2; theta += thetaStep) {
             let r;
             try {
                 r = evaluator(theta);
@@ -969,11 +1034,19 @@ export class GraphEngine {
         if (!curve.evaluator) return '';
         
         const evaluator = curve.evaluator;
-        const step = (this.xMax - this.xMin) / this.width * 2;
+        const xMin = (curve.xMin !== null && curve.xMin !== undefined) ? curve.xMin : this.xMin;
+        const xMax = (curve.xMax !== null && curve.xMax !== undefined) ? curve.xMax : this.xMax;
+        let step = (curve.step !== null && curve.step !== undefined) ? curve.step : ((xMax - xMin) / this.width * 2);
+        
+        if (step <= 0 || !isFinite(step)) {
+            step = (xMax - xMin) / this.width * 2;
+        }
+        
         let pathData = '';
         let isFirstPoint = true;
+        let lastScreenPos = null;
         
-        for (let x = this.xMin; x <= this.xMax; x += step) {
+        for (let x = xMin; x <= xMax + step / 2; x += step) {
             let y;
             try {
                 y = evaluator(x);
@@ -983,14 +1056,28 @@ export class GraphEngine {
             
             if (typeof y === 'number' && isFinite(y)) {
                 const screenPos = this.worldToScreen(x, y);
-                if (isFirstPoint) {
+                
+                let shouldBreak = isFirstPoint;
+                if (!shouldBreak && lastScreenPos) {
+                    const dx = screenPos.x - lastScreenPos.x;
+                    const dy = screenPos.y - lastScreenPos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > Math.max(this.width, this.height) * 0.3) {
+                        shouldBreak = true;
+                    }
+                }
+                
+                if (shouldBreak) {
                     pathData += `M ${screenPos.x} ${screenPos.y}`;
                     isFirstPoint = false;
                 } else {
                     pathData += ` L ${screenPos.x} ${screenPos.y}`;
                 }
+                
+                lastScreenPos = screenPos;
             } else {
                 isFirstPoint = true;
+                lastScreenPos = null;
             }
         }
         
@@ -1155,13 +1242,19 @@ export class GraphEngine {
         
         this.ctx.beginPath();
         
-        const thetaStep = 0.01;
-        const thetaEnd = Math.PI * 2;
+        const thetaStart = (curve.xMin !== null && curve.xMin !== undefined) ? curve.xMin : 0;
+        const thetaEnd = (curve.xMax !== null && curve.xMax !== undefined) ? curve.xMax : Math.PI * 2;
+        let thetaStep = (curve.step !== null && curve.step !== undefined) ? curve.step : 0.01;
+        
+        if (thetaStep <= 0 || !isFinite(thetaStep)) {
+            thetaStep = 0.01;
+        }
+        
         let isFirstPoint = true;
         let lastScreenPos = null;
         let lastR = null;
         
-        for (let theta = 0; theta <= thetaEnd + thetaStep / 2; theta += thetaStep) {
+        for (let theta = thetaStart; theta <= thetaEnd + thetaStep / 2; theta += thetaStep) {
             let r;
             try {
                 r = evaluator(theta);
@@ -1185,10 +1278,6 @@ export class GraphEngine {
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     
                     if (dist > Math.max(this.width, this.height) * 0.3) {
-                        shouldBreak = true;
-                    }
-                    
-                    if (isNaN(r) || !isFinite(r)) {
                         shouldBreak = true;
                     }
                 }
@@ -1232,7 +1321,10 @@ export class GraphEngine {
                 formula: c.formula,
                 variable: c.variable,
                 latex: c.latex,
-                jsExpression: c.jsExpression
+                jsExpression: c.jsExpression,
+                xMin: c.xMin,
+                xMax: c.xMax,
+                step: c.step
             }))
         };
     }

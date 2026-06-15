@@ -319,6 +319,13 @@ export class DataFitter {
         return this.coefficients !== null;
     }
 
+    clearData() {
+        this.csvData = null;
+        this.degree = 2;
+        this.coefficients = null;
+        this.rSquared = null;
+    }
+
     getDataCount() {
         return this.csvData ? this.csvData.x.length : 0;
     }
