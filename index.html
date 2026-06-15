@@ -218,6 +218,23 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">数据分析</h2>
+                    <div class="analysis-section">
+                        <div class="analysis-tabs">
+                            <button class="analysis-tab active" data-tab="zeros">零点</button>
+                            <button class="analysis-tab" data-tab="extrema">极值</button>
+                            <button class="analysis-tab" data-tab="intersections">交点</button>
+                        </div>
+                        <div class="analysis-results" id="analysisResults">
+                            <div class="analysis-empty">请先添加曲线</div>
+                        </div>
+                        <button class="btn btn-secondary btn-small btn-full" id="btnAnalyze">
+                            <span class="btn-icon">📈</span>计算关键点
+                        </button>
+                    </div>
+                </div>
             </aside>
         </div>
 
@@ -262,6 +279,39 @@
     <div class="modal-overlay" id="exportModal" style="display:none;">
         <div class="modal">
             <h3 class="modal-title">导出</h3>
+            <div class="export-content-options">
+                <div class="export-options-title">导出内容：</div>
+                <div class="export-option-list">
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportCurves" checked>
+                        <span>函数曲线</span>
+                    </label>
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportScatter" checked>
+                        <span>散点数据</span>
+                    </label>
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportFit" checked>
+                        <span>拟合曲线</span>
+                    </label>
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportKeyPoints">
+                        <span>关键点标注</span>
+                    </label>
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportGrid" checked>
+                        <span>网格</span>
+                    </label>
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportAxes" checked>
+                        <span>坐标轴</span>
+                    </label>
+                    <label class="export-option-item">
+                        <input type="checkbox" id="exportFormula" checked>
+                        <span>公式说明（顶部）</span>
+                    </label>
+                </div>
+            </div>
             <div class="export-options">
                 <button class="export-option-btn" data-format="png">
                     <span class="export-icon">🖼️</span>
