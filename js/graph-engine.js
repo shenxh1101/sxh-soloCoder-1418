@@ -721,11 +721,12 @@ export class GraphEngine {
         return this.canvas.toDataURL('image/png');
     }
 
-    exportSVG() {
-        const w = this.width;
-        const h = this.height;
+    exportSVG(curvesInfo = null, fitInfo = null, coordSystem = '直角坐标系') {
+        const graphW = this.width;
+        const headerHeight = 60 + (curvesInfo ? curvesInfo.length * 22 : 0) + (fitInfo ? 44 : 0);
+        const totalH = this.height + headerHeight;
         
-        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${graphW}" height="${totalH}" viewBox="0 0 ${graphW} ${totalH}">`;
         
         svg += `<defs>
             <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -734,14 +735,53 @@ export class GraphEngine {
             </linearGradient>
         </defs>`;
         
-        svg += `<rect width="${w}" height="${h}" fill="url(#bgGradient)"/>`;
+        svg += `<rect width="${graphW}" height="${totalH}" fill="url(#bgGradient)"/>`;
+        
+        let y = 20;
+        
+        svg += `<text x="20" y="${y}" font-family="sans-serif" font-size="14" font-weight="bold" fill="#e8f0ff">公式编辑器 &amp; 函数绘图  |  ${coordSystem}</text>`;
+        y += 20;
+        
+        svg += `<line x1="20" y1="${y - 4}" x2="${graphW - 20}" y2="${y - 4}" stroke="#2a4168" stroke-width="1"/>`;
+        y += 6;
+        
+        if (curvesInfo && curvesInfo.length > 0) {
+            svg += `<text x="20" y="${y + 12}" font-family="sans-serif" font-size="12" fill="#9fb3d1">曲线公式：</text>`;
+            y += 18;
+            
+            curvesInfo.forEach(info => {
+                svg += `<rect x="28" y="${y + 3}" width="16" height="3" fill="${info.color}"/>`;
+                svg += `<text x="52" y="${y + 12}" font-family="monospace" font-size="12" fill="#e8f0ff">${this.escapeXml(info.formula)}</text>`;
+                y += 22;
+            });
+        }
+        
+        if (fitInfo) {
+            svg += `<text x="20" y="${y + 12}" font-family="sans-serif" font-size="12" fill="#9fb3d1">拟合结果：</text>`;
+            y += 18;
+            svg += `<rect x="28" y="${y + 3}" width="16" height="3" fill="#34d399"/>`;
+            svg += `<text x="52" y="${y + 12}" font-family="monospace" font-size="12" fill="#e8f0ff">y = ${this.escapeXml(fitInfo.formula)}    R² = ${fitInfo.rSquared.toFixed(6)}</text>`;
+            y += 22;
+        }
+        
+        const transformY = headerHeight;
+        
+        svg += `<g transform="translate(0, ${transformY})">`;
         
         if (this.showGrid) {
-            svg += this.generateGridSVG();
+            if (this.coordinateSystem === 'polar') {
+                svg += this.generatePolarGridSVG();
+            } else {
+                svg += this.generateGridSVG();
+            }
         }
         
         if (this.showAxes) {
-            svg += this.generateAxesSVG();
+            if (this.coordinateSystem === 'polar') {
+                svg += this.generatePolarAxesSVG();
+            } else {
+                svg += this.generateAxesSVG();
+            }
         }
         
         if (this.scatterData) {
@@ -750,7 +790,11 @@ export class GraphEngine {
         
         this.curves.forEach(curve => {
             if (curve.visible !== false) {
-                svg += this.generateCurveSVG(curve);
+                if (this.coordinateSystem === 'polar') {
+                    svg += this.generatePolarCurveSVG(curve);
+                } else {
+                    svg += this.generateCurveSVG(curve);
+                }
             }
         });
         
@@ -758,8 +802,130 @@ export class GraphEngine {
             svg += this.generateFitCurveSVG();
         }
         
+        svg += `</g>`;
+        
         svg += '</svg>';
         return svg;
+    }
+    
+    escapeXml(str) {
+        if (typeof str !== 'string') return '';
+        return str.replace(/[<>&'"]/g, (c) => ({
+            '<': '&lt;',
+            '>': '&gt;',
+            '&': '&amp;',
+            "'": '&apos;',
+            '"': '&quot;'
+        }[c]));
+    }
+    
+    generatePolarGridSVG() {
+        let svg = '';
+        const center = this.worldToScreen(0, 0);
+        const maxR = Math.max(Math.abs(this.xMax), Math.abs(this.xMin), Math.abs(this.yMax), Math.abs(this.yMin));
+        const rStep = getNiceNumber(maxR / 5, true);
+        
+        for (let r = rStep; r <= maxR; r += rStep) {
+            const screenPos = this.worldToScreen(r, 0);
+            const radius = Math.abs(screenPos.x - center.x);
+            if (radius > 0) {
+                svg += `<circle cx="${center.x}" cy="${center.y}" r="${radius}" fill="none" stroke="rgba(42,65,104,0.5)" stroke-width="1"/>`;
+            }
+        }
+        
+        const angleStep = Math.PI / 6;
+        for (let theta = 0; theta < Math.PI * 2; theta += angleStep) {
+            const x = maxR * Math.cos(theta);
+            const y = maxR * Math.sin(theta);
+            const screenPos = this.worldToScreen(x, y);
+            svg += `<line x1="${center.x}" y1="${center.y}" x2="${screenPos.x}" y2="${screenPos.y}" stroke="rgba(42,65,104,0.5)" stroke-width="1"/>`;
+        }
+        
+        return svg;
+    }
+    
+    generatePolarAxesSVG() {
+        let svg = '';
+        const center = this.worldToScreen(0, 0);
+        const maxR = Math.max(Math.abs(this.xMax), Math.abs(this.xMin), Math.abs(this.yMax), Math.abs(this.yMin));
+        
+        const rightPos = this.worldToScreen(maxR, 0);
+        svg += `<line x1="${center.x}" y1="${center.y}" x2="${rightPos.x}" y2="${rightPos.y}" stroke="#6b82a5" stroke-width="2"/>`;
+        svg += `<text x="${rightPos.x + 5}" y="${rightPos.y + 4}" font-family="sans-serif" font-size="12" fill="#6b82a5">0°</text>`;
+        
+        const topPos = this.worldToScreen(0, maxR);
+        svg += `<text x="${topPos.x - 15}" y="${topPos.y - 5}" font-family="sans-serif" font-size="12" fill="#6b82a5">90°</text>`;
+        
+        const leftPos = this.worldToScreen(-maxR, 0);
+        svg += `<text x="${leftPos.x - 30}" y="${leftPos.y + 4}" font-family="sans-serif" font-size="12" fill="#6b82a5">180°</text>`;
+        
+        const bottomPos = this.worldToScreen(0, -maxR);
+        svg += `<text x="${bottomPos.x - 15}" y="${bottomPos.y + 15}" font-family="sans-serif" font-size="12" fill="#6b82a5">270°</text>`;
+        
+        return svg;
+    }
+    
+    generatePolarCurveSVG(curve) {
+        if (!curve.evaluator) return '';
+        
+        const evaluator = curve.evaluator;
+        const thetaStep = 0.01;
+        const thetaEnd = Math.PI * 2;
+        let pathData = '';
+        let isFirstPoint = true;
+        let lastScreenPos = null;
+        
+        for (let theta = 0; theta <= thetaEnd + thetaStep / 2; theta += thetaStep) {
+            let r;
+            try {
+                r = evaluator(theta);
+            } catch (e) {
+                r = NaN;
+            }
+            
+            if (typeof r === 'number' && isFinite(r)) {
+                const actualR = Math.abs(r);
+                const actualTheta = r < 0 ? theta + Math.PI : theta;
+                
+                const x = actualR * Math.cos(actualTheta);
+                const y = actualR * Math.sin(actualTheta);
+                const screenPos = this.worldToScreen(x, y);
+                
+                let shouldBreak = isFirstPoint;
+                
+                if (!shouldBreak && lastScreenPos) {
+                    const dx = screenPos.x - lastScreenPos.x;
+                    const dy = screenPos.y - lastScreenPos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > Math.max(this.width, this.height) * 0.3) {
+                        shouldBreak = true;
+                    }
+                }
+                
+                if (shouldBreak) {
+                    pathData += `M ${screenPos.x} ${screenPos.y}`;
+                    isFirstPoint = false;
+                } else {
+                    pathData += ` L ${screenPos.x} ${screenPos.y}`;
+                }
+                
+                lastScreenPos = screenPos;
+            } else {
+                isFirstPoint = true;
+                lastScreenPos = null;
+            }
+        }
+        
+        if (!pathData) return '';
+        
+        let dashArray = '';
+        if (curve.lineStyle === 'dashed') {
+            dashArray = ' stroke-dasharray="8,6"';
+        } else if (curve.lineStyle === 'dotted') {
+            dashArray = ' stroke-dasharray="2,4"';
+        }
+        
+        return `<path d="${pathData}" fill="none" stroke="${curve.color || '#00d4ff'}" stroke-width="${curve.lineWidth || 2}"${dashArray}/>`;
     }
 
     generateGridSVG() {
@@ -976,8 +1142,6 @@ export class GraphEngine {
         const evaluator = curve.evaluator || curve.func;
         if (typeof evaluator !== 'function') return;
         
-        const center = this.worldToScreen(0, 0);
-        
         this.ctx.strokeStyle = curve.color || '#00d4ff';
         this.ctx.lineWidth = curve.lineWidth || 2;
         
@@ -991,10 +1155,13 @@ export class GraphEngine {
         
         this.ctx.beginPath();
         
-        const thetaStep = 0.02;
+        const thetaStep = 0.01;
+        const thetaEnd = Math.PI * 2;
         let isFirstPoint = true;
+        let lastScreenPos = null;
+        let lastR = null;
         
-        for (let theta = 0; theta <= Math.PI * 2; theta += thetaStep) {
+        for (let theta = 0; theta <= thetaEnd + thetaStep / 2; theta += thetaStep) {
             let r;
             try {
                 r = evaluator(theta);
@@ -1002,23 +1169,45 @@ export class GraphEngine {
                 r = NaN;
             }
             
-            if (typeof r === 'number' && isFinite(r) && r >= 0) {
-                const x = r * Math.cos(theta);
-                const y = r * Math.sin(theta);
+            if (typeof r === 'number' && isFinite(r)) {
+                const actualR = Math.abs(r);
+                const actualTheta = r < 0 ? theta + Math.PI : theta;
+                
+                const x = actualR * Math.cos(actualTheta);
+                const y = actualR * Math.sin(actualTheta);
                 const screenPos = this.worldToScreen(x, y);
                 
-                if (isFirstPoint) {
+                let shouldBreak = isFirstPoint;
+                
+                if (!shouldBreak && lastScreenPos && lastR !== null) {
+                    const dx = screenPos.x - lastScreenPos.x;
+                    const dy = screenPos.y - lastScreenPos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist > Math.max(this.width, this.height) * 0.3) {
+                        shouldBreak = true;
+                    }
+                    
+                    if (isNaN(r) || !isFinite(r)) {
+                        shouldBreak = true;
+                    }
+                }
+                
+                if (shouldBreak) {
                     this.ctx.moveTo(screenPos.x, screenPos.y);
                     isFirstPoint = false;
                 } else {
                     this.ctx.lineTo(screenPos.x, screenPos.y);
                 }
+                
+                lastScreenPos = screenPos;
+                lastR = r;
             } else {
                 isFirstPoint = true;
+                lastScreenPos = null;
             }
         }
         
-        this.ctx.closePath();
         this.ctx.stroke();
         this.ctx.setLineDash([]);
     }
@@ -1041,7 +1230,9 @@ export class GraphEngine {
                 lineWidth: c.lineWidth,
                 visible: c.visible,
                 formula: c.formula,
-                variable: c.variable
+                variable: c.variable,
+                latex: c.latex,
+                jsExpression: c.jsExpression
             }))
         };
     }

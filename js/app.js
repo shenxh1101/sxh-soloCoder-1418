@@ -207,6 +207,7 @@ class App {
         const variable = this.formulaEditor.variable;
         const formulaStr = this.formulaEditor.getFormulaString();
         const latex = this.formulaEditor.getLaTeX();
+        const jsExpression = this.formulaEditor.getJSExpression();
         
         const curve = {
             id: generateId(),
@@ -217,7 +218,8 @@ class App {
             evaluator: evaluator,
             variable: variable,
             formula: formulaStr,
-            latex: latex
+            latex: latex,
+            jsExpression: jsExpression
         };
         
         if (this.graphEngine.addCurve(curve)) {
@@ -623,13 +625,23 @@ class App {
                 this.graphEngine.curves = [];
                 
                 graphData.curves.forEach(curveData => {
-                    if (curveData.formula && curveData.variable) {
-                        try {
-                            const savedVariable = this.formulaEditor.variable;
-                            this.formulaEditor.setVariable(curveData.variable);
-                            
-                            const evaluator = this.formulaEditor.createEvaluator();
-                            
+                    try {
+                        let evaluator;
+                        const variable = curveData.variable || 'x';
+                        
+                        if (curveData.jsExpression) {
+                            evaluator = new Function(variable, `return ${curveData.jsExpression};`);
+                        } else if (curveData.formula) {
+                            evaluator = (x) => {
+                                try {
+                                    return eval(curveData.formula.replace(new RegExp(variable, 'g'), `(${x})`));
+                                } catch (e) {
+                                    return NaN;
+                                }
+                            };
+                        }
+                        
+                        if (evaluator) {
                             const curve = {
                                 id: curveData.id || generateId(),
                                 color: curveData.color || '#00d4ff',
@@ -637,17 +649,16 @@ class App {
                                 lineWidth: curveData.lineWidth || 2,
                                 visible: curveData.visible !== false,
                                 evaluator: evaluator,
-                                variable: curveData.variable,
+                                variable: variable,
                                 formula: curveData.formula,
-                                latex: curveData.latex || curveData.formula
+                                latex: curveData.latex || curveData.formula,
+                                jsExpression: curveData.jsExpression
                             };
                             
                             this.graphEngine.curves.push(curve);
-                            
-                            this.formulaEditor.setVariable(savedVariable);
-                        } catch (e) {
-                            console.error('加载曲线失败:', e);
                         }
+                    } catch (e) {
+                        console.error('加载曲线失败:', e);
                     }
                 });
                 
@@ -710,12 +721,104 @@ class App {
     exportGraph(format) {
         const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
         
+        const curvesInfo = this.graphEngine.curves
+            .filter(c => c.visible !== false)
+            .map(c => ({ formula: c.formula || c.latex || 'f(x)', color: c.color }));
+        
+        const fitInfo = this.dataFitter.hasFit() ? {
+            formula: this.dataFitter.getFormulaString(),
+            rSquared: this.dataFitter.rSquared
+        } : null;
+        
+        const coordSystem = this.graphEngine.coordinateSystem === 'polar' ? '极坐标系' : '直角坐标系';
+        
         if (format === 'png') {
-            downloadCanvasAsPNG(this.graphEngine.canvas, `graph-${timestamp}.png`);
+            this.exportPNGWithInfo(curvesInfo, fitInfo, coordSystem, timestamp);
         } else if (format === 'svg') {
-            const svgContent = this.graphEngine.exportSVG();
+            const svgContent = this.graphEngine.exportSVG(curvesInfo, fitInfo, coordSystem);
             downloadFile(`graph-${timestamp}.svg`, svgContent, 'image/svg+xml');
         }
+    }
+    
+    exportPNGWithInfo(curvesInfo, fitInfo, coordSystem, timestamp) {
+        const originalCanvas = this.graphEngine.canvas;
+        const dpr = window.devicePixelRatio || 1;
+        const headerHeight = 60 + curvesInfo.length * 22 + (fitInfo ? 44 : 0);
+        
+        const newCanvas = document.createElement('canvas');
+        newCanvas.width = originalCanvas.width;
+        newCanvas.height = originalCanvas.height + headerHeight * dpr;
+        
+        const ctx = newCanvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        
+        const cssWidth = originalCanvas.width / dpr;
+        const cssHeight = originalCanvas.height / dpr;
+        
+        const bgGradient = ctx.createLinearGradient(0, 0, 0, headerHeight + cssHeight);
+        bgGradient.addColorStop(0, '#0a1628');
+        bgGradient.addColorStop(1, '#0d1b2e');
+        ctx.fillStyle = bgGradient;
+        ctx.fillRect(0, 0, cssWidth, headerHeight + cssHeight);
+        
+        let y = 20;
+        
+        ctx.fillStyle = '#e8f0ff';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`公式编辑器 & 函数绘图  |  ${coordSystem}`, 20, y);
+        y += 20;
+        
+        ctx.strokeStyle = '#2a4168';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(20, y - 4);
+        ctx.lineTo(cssWidth - 20, y - 4);
+        ctx.stroke();
+        y += 6;
+        
+        if (curvesInfo.length > 0) {
+            ctx.fillStyle = '#9fb3d1';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('曲线公式：', 20, y);
+            y += 18;
+            
+            curvesInfo.forEach(info => {
+                ctx.fillStyle = info.color;
+                ctx.fillRect(28, y + 3, 16, 3);
+                
+                ctx.fillStyle = '#e8f0ff';
+                ctx.font = '12px monospace';
+                ctx.fillText(info.formula, 52, y);
+                y += 22;
+            });
+        }
+        
+        if (fitInfo) {
+            ctx.fillStyle = '#9fb3d1';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('拟合结果：', 20, y);
+            y += 18;
+            
+            ctx.fillStyle = '#34d399';
+            ctx.fillRect(28, y + 3, 16, 3);
+            
+            ctx.fillStyle = '#e8f0ff';
+            ctx.font = '12px monospace';
+            ctx.fillText(`y = ${fitInfo.formula}    R² = ${fitInfo.rSquared.toFixed(6)}`, 52, y);
+            y += 22;
+        }
+        
+        ctx.drawImage(originalCanvas, 0, headerHeight * dpr, originalCanvas.width, originalCanvas.height);
+        
+        const url = newCanvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `graph-${timestamp}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
 
     bindMouseTooltip() {
